@@ -1,7 +1,7 @@
 from bs4 import BeautifulSoup
 import requests
 import re
-from rapidfuzz import process
+from rapidfuzz import process, fuzz
 from typing import Iterable
 
 
@@ -18,7 +18,9 @@ class Parser:
         # because we're dealing with html, there will be character references.
         # there might be other references other than the ampersand.
         title = title.replace("&amp;", "&")
-        proper_title, ratio = process.extractOne(title, self.shows.keys())
+        possible_titles = process.extract(title, self.shows.keys(), scorer=fuzz.token_set_ratio, limit=20) # select 20 best titles based on token_set_ratio
+        only_best_matching_titles = [p[0] for p in possible_titles if p[1] >= possible_titles[0][1]]  # selects only titles with token_set_ratio equal to best found ratio
+        proper_title, ratio = process.extractOne(title, only_best_matching_titles, scorer=fuzz.token_sort_ratio) # selects title with best token_sort_ratio from previous selection
         # if the proper_title is too different than the title, return "".
         if ratio <= min_threshold:
             return ""
@@ -84,7 +86,7 @@ class Parser:
             response = requests.get(api, params=query)
             # the limit is counted in number of episodes (or batches)
             # because each page contains 12 episodes, we must divide it by 12.
-            if response.text == stop_text or query["nextid"] >= limit // 12:
+            if response.text == stop_text or query["nextid"] > (limit - 1) // 12:
                 break
             html += response.text
             query["nextid"] += 1
